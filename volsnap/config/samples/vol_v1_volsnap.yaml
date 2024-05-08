@@ -1,0 +1,10 @@
+apiVersion: vol.nehagupta1/v1
+kind: Volsnap
+metadata:
+  labels:
+    app.kubernetes.io/name: volsnap
+    app.kubernetes.io/managed-by: kustomize
+  name: volsnap-sample-try-3
+spec:
+  volume_name: csi-pvc
+  # TODO(user): Add fields here
