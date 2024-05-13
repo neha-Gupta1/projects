@@ -21,4 +21,13 @@ resources:
     defaulting: true
     validation: true
     webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: nehagupta1
+  group: vol
+  kind: Volrestore
+  path: neha-gupta1/volsnap/api/v1
+  version: v1
 version: "3"

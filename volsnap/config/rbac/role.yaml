@@ -7,6 +7,32 @@ rules:
 - apiGroups:
   - vol.nehagupta1
   resources:
+  - volrestores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - vol.nehagupta1
+  resources:
+  - volrestores/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - vol.nehagupta1
+  resources:
+  - volrestores/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - vol.nehagupta1
+  resources:
   - volsnaps
   verbs:
   - create

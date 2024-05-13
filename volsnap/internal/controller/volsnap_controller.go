@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	snapclientv1 "github.com/kubernetes-csi/external-snapshotter/client/v7/clientset/versioned/typed/volumesnapshot/v1"
@@ -30,7 +31,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	volv1 "neha-gupta1/volsnap/api/v1"
 )
@@ -59,16 +63,47 @@ type VolsnapReconciler struct {
 func (r *VolsnapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
-	var customVolsnapshot volv1.Volsnap
+	var (
+		customVolsnapshot       volv1.Volsnap
+		customSnapFinalizerName = "nehagupta1/finalizer"
+	)
 
 	if err := r.Get(ctx, req.NamespacedName, &customVolsnapshot); err != nil {
-		log.Log.Error(err, "getting Volsnap")
+		log.Log.Info("getting Volsnap", err)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	snapClient, err := snapclientv1.NewForConfigAndClient(r.Config, r.HTTPClient)
+	if !customVolsnapshot.ObjectMeta.DeletionTimestamp.IsZero() &&
+		controllerutil.ContainsFinalizer(&customVolsnapshot, customSnapFinalizerName) {
+		// our finalizer is present, so lets handle any external dependency
+		if err := r.deleteVolumeSnapshot(ctx, customVolsnapshot); err != nil {
+			// if fail to delete the external dependency here, return with error
+			// so that it can be retried.
+			return ctrl.Result{}, err
+		}
+
+		// remove our finalizer from the list and update it.
+		controllerutil.RemoveFinalizer(&customVolsnapshot, customSnapFinalizerName)
+		if err := r.Update(ctx, &customVolsnapshot); err != nil {
+			fmt.Println("Error removing finaizer: ", err)
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{}, nil
+	}
+
+	// registering finalizer
+	if !controllerutil.ContainsFinalizer(&customVolsnapshot, customSnapFinalizerName) {
+		controllerutil.AddFinalizer(&customVolsnapshot, customSnapFinalizerName)
+		if err := r.Update(ctx, &customVolsnapshot); err != nil {
+			fmt.Println("Adding finalizer failed")
+
+			return ctrl.Result{}, err
+		}
+	}
+
+	snapClient, err := r.createSnapshotClient()
 	if err != nil {
-		log.Log.Error(err, "getting volumesnapshot client")
 		return ctrl.Result{}, err
 	}
 
@@ -78,6 +113,7 @@ func (r *VolsnapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if err != nil {
+		// retry will keep on retring for ever in some case and block the other resources- || existingVolsnapshot.Status.Error != nil
 		log.Log.Info("Snapshot not present we will create one!")
 
 		snapshotClassName := "csi-hostpath-snapclass"
@@ -91,9 +127,17 @@ func (r *VolsnapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 					PersistentVolumeClaimName: &customVolsnapshot.Spec.VolumeName,
 				}}}
 
-		_, err := snapClient.VolumeSnapshots(req.NamespacedName.Namespace).Create(ctx, &newSnapshot, metav1.CreateOptions{})
+		volumeSnapshot, err := snapClient.VolumeSnapshots(req.NamespacedName.Namespace).Create(ctx, &newSnapshot, metav1.CreateOptions{})
 		if err != nil {
 			log.Log.Error(err, "creating snapshot")
+			return ctrl.Result{}, err
+		}
+
+		// update snapshot info in the volsnap
+		customVolsnapshot.Spec.VolumeName = *volumeSnapshot.Spec.Source.PersistentVolumeClaimName
+		customVolsnapshot.Spec.SnapshotName = volumeSnapshot.Name
+
+		if err := r.Update(ctx, &customVolsnapshot); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -103,9 +147,53 @@ func (r *VolsnapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return ctrl.Result{}, nil
 }
 
+func (r *VolsnapReconciler) createSnapshotClient() (client *snapclientv1.SnapshotV1Client, err error) {
+	client, err = snapclientv1.NewForConfigAndClient(r.Config, r.HTTPClient)
+	if err != nil {
+		log.Log.Error(err, "getting volumesnapshot client")
+		return nil, err
+	}
+
+	return client, err
+}
+
+func (r *VolsnapReconciler) deleteVolumeSnapshot(ctx context.Context, customVolsnapshot volv1.Volsnap) error {
+	// snapClient, err := r.createSnapshotClient()
+	// if err != nil {
+	// 	return err
+	// }
+
+	// volumesnapshot, err := snapClient.VolumeSnapshots(customVolsnapshot.Namespace).Get(ctx, customVolsnapshot.Name, metav1.GetOptions{})
+	// if err != nil {
+	// 	log.Log.Error(err, "getting snapshot")
+	// 	return err
+	// }
+
+	// err = snapClient.VolumeSnapshots(customVolsnapshot.Namespace).Delete(ctx, volumesnapshot.Name, metav1.DeleteOptions{})
+	// if err != nil {
+	// 	log.Log.Error(err, "deleting snapshot")
+	// 	return err
+	// }
+
+	return nil
+}
+
+func ignoreUpdationPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			// Evaluates to false if the object has been confirmed deleted.
+			return !e.DeleteStateUnknown
+		},
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *VolsnapReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&volv1.Volsnap{}).
+		WithEventFilter(ignoreUpdationPredicate()).
 		Complete(r)
 }

@@ -1,0 +1,23 @@
+# permissions for end users to view volrestores.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: volsnap
+    app.kubernetes.io/managed-by: kustomize
+  name: volrestore-viewer-role
+rules:
+- apiGroups:
+  - vol.nehagupta1
+  resources:
+  - volrestores
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - vol.nehagupta1
+  resources:
+  - volrestores/status
+  verbs:
+  - get

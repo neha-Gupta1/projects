@@ -139,7 +139,16 @@ func main() {
 	// 		os.Exit(1)
 	// 	}
 	// }
-	//+kubebuilder:scaffold:builder
+	if err = (&controller.VolrestoreReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		HTTPClient: httpClient,
+		Config:     config,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Volrestore")
+		os.Exit(1)
+	}
+	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")

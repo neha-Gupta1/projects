@@ -16,64 +16,64 @@ limitations under the License.
 
 package v1
 
-import (
-	"k8s.io/apimachinery/pkg/runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-)
+// import (
+// 	"k8s.io/apimachinery/pkg/runtime"
+// 	ctrl "sigs.k8s.io/controller-runtime"
+// 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+// 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+// 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+// )
 
-// log is for logging in this package.
-var volsnaplog = logf.Log.WithName("volsnap-resource")
+// // log is for logging in this package.
+// var volsnaplog = logf.Log.WithName("volsnap-resource")
 
-// SetupWebhookWithManager will setup the manager to manage the webhooks
-func (r *Volsnap) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
-		Complete()
-}
+// // SetupWebhookWithManager will setup the manager to manage the webhooks
+// func (r *Volsnap) SetupWebhookWithManager(mgr ctrl.Manager) error {
+// 	return ctrl.NewWebhookManagedBy(mgr).
+// 		For(r).
+// 		Complete()
+// }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// // TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
-//+kubebuilder:webhook:path=/mutate-vol-nehagupta1-v1-volsnap,mutating=true,failurePolicy=fail,sideEffects=None,groups=vol.nehagupta1,resources=volsnaps,verbs=create;update,versions=v1,name=mvolsnap.kb.io,admissionReviewVersions=v1
+// //+kubebuilder:webhook:path=/mutate-vol-nehagupta1-v1-volsnap,mutating=true,failurePolicy=fail,sideEffects=None,groups=vol.nehagupta1,resources=volsnaps,verbs=create;update,versions=v1,name=mvolsnap.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &Volsnap{}
+// var _ webhook.Defaulter = &Volsnap{}
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *Volsnap) Default() {
-	volsnaplog.Info("default", "name", r.Name)
+// // Default implements webhook.Defaulter so a webhook will be registered for the type
+// func (r *Volsnap) Default() {
+// 	volsnaplog.Info("default", "name", r.Name)
 
-	// TODO(user): fill in your defaulting logic.
-}
+// 	// TODO(user): fill in your defaulting logic.
+// }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
-//+kubebuilder:webhook:path=/validate-vol-nehagupta1-v1-volsnap,mutating=false,failurePolicy=fail,sideEffects=None,groups=vol.nehagupta1,resources=volsnaps,verbs=create;update,versions=v1,name=vvolsnap.kb.io,admissionReviewVersions=v1
+// // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
+// // NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
+// // Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
+// //+kubebuilder:webhook:path=/validate-vol-nehagupta1-v1-volsnap,mutating=false,failurePolicy=fail,sideEffects=None,groups=vol.nehagupta1,resources=volsnaps,verbs=create;update,versions=v1,name=vvolsnap.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &Volsnap{}
+// var _ webhook.Validator = &Volsnap{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *Volsnap) ValidateCreate() (admission.Warnings, error) {
-	volsnaplog.Info("validate create", "name", r.Name)
+// // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
+// func (r *Volsnap) ValidateCreate() (admission.Warnings, error) {
+// 	volsnaplog.Info("validate create", "name", r.Name)
 
-	// TODO(user): fill in your validation logic upon object creation.
-	return nil, nil
-}
+// 	// TODO(user): fill in your validation logic upon object creation.
+// 	return nil, nil
+// }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *Volsnap) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	volsnaplog.Info("validate update", "name", r.Name)
+// // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
+// func (r *Volsnap) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+// 	volsnaplog.Info("validate update", "name", r.Name)
 
-	// TODO(user): fill in your validation logic upon object update.
-	return nil, nil
-}
+// 	// TODO(user): fill in your validation logic upon object update.
+// 	return nil, nil
+// }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *Volsnap) ValidateDelete() (admission.Warnings, error) {
-	volsnaplog.Info("validate delete", "name", r.Name)
+// // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
+// func (r *Volsnap) ValidateDelete() (admission.Warnings, error) {
+// 	volsnaplog.Info("validate delete", "name", r.Name)
 
-	// TODO(user): fill in your validation logic upon object deletion.
-	return nil, nil
-}
+// 	// TODO(user): fill in your validation logic upon object deletion.
+// 	return nil, nil
+// }

@@ -17,52 +17,52 @@ limitations under the License.
 package v1
 
 import (
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// VolsnapSpec defines the desired state of Volsnap
-type VolsnapSpec struct {
+// VolrestoreSpec defines the desired state of Volrestore
+type VolrestoreSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// VolumeName is an example field of Volsnap. Edit volsnap_types.go to remove/update
-	VolumeName string `json:"volume_name,omitempty"`
-	// +kubebuilder:default:="Delete"
-	DeletionPolicy string `json:"deletion_policy"`
-	SnapshotName   string `json:"snapshot_name,omitempty"`
+	// VolumeName is the PVC name whose PV data is to be restored
+	VolumeSnapName string `json:"volume_snap_name,omitempty"`
 }
 
-// VolsnapStatus defines the observed state of Volsnap
-type VolsnapStatus struct {
+// VolrestoreStatus defines the observed state of Volrestore
+type VolrestoreStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	RunningStatus string `json:"running_status"`
+	Phase     v1.PersistentVolumeClaimPhase       `json:"phase,omitempty"`
+	Condition []v1.PersistentVolumeClaimCondition `json:"condition,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// Volsnap is the Schema for the volsnaps API
-type Volsnap struct {
+// Volrestore is the Schema for the volrestores API
+type Volrestore struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   VolsnapSpec   `json:"spec,omitempty"`
-	Status VolsnapStatus `json:"status,omitempty"`
+	Spec VolrestoreSpec `json:"spec,omitempty"`
+	// Ask if this is correct
+	Status VolrestoreStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// VolsnapList contains a list of Volsnap
-type VolsnapList struct {
+// VolrestoreList contains a list of Volrestore
+type VolrestoreList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Volsnap `json:"items"`
+	Items           []Volrestore `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Volsnap{}, &VolsnapList{})
+	SchemeBuilder.Register(&Volrestore{}, &VolrestoreList{})
 }

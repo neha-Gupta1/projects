@@ -1,10 +1,10 @@
 apiVersion: vol.nehagupta1/v1
-kind: Volsnap
+kind: Volrestore
 metadata:
   labels:
     app.kubernetes.io/name: volsnap
     app.kubernetes.io/managed-by: kustomize
-  name: volsnap-sample-try-6
+  name: volrestore-sample
 spec:
-  volume_name: csi-pvc
+  volume_snap_name: volsnap-sample-try-5
   # TODO(user): Add fields here
