@@ -57,6 +57,23 @@ var _ = Describe("Volsnap Controller", func() {
 			}
 		})
 
+		// k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
+		// 	Scheme: scheme.Scheme,
+		// })
+		// Expect(err).ToNot(HaveOccurred())
+
+		// err = (&VolsnapReconciler{
+		// 	Client: k8sManager.GetClient(),
+		// 	Scheme: k8sManager.GetScheme(),
+		// }).SetupWithManager(k8sManager)
+		// Expect(err).ToNot(HaveOccurred())
+
+		// go func() {
+		// 	defer GinkgoRecover()
+		// 	err = k8sManager.Start(ctx)
+		// 	Expect(err).ToNot(HaveOccurred(), "failed to run manager")
+		// }()
+
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &volv1.Volsnap{}

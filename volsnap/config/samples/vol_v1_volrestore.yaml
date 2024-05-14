@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/name: volsnap
     app.kubernetes.io/managed-by: kustomize
-  name: volrestore-sample
+  name: volrestore-sample-3
 spec:
-  volume_snap_name: volsnap-sample-try-5
+  volume_snap_name: volsnap-1
   # TODO(user): Add fields here

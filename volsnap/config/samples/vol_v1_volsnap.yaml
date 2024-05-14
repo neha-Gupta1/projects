@@ -4,7 +4,8 @@ metadata:
   labels:
     app.kubernetes.io/name: volsnap
     app.kubernetes.io/managed-by: kustomize
-  name: volsnap-sample-try-6
+  name: volsnap-1
 spec:
   volume_name: csi-pvc
-  # TODO(user): Add fields here
+  snapshot_name: 
+

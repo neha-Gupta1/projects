@@ -26,11 +26,8 @@ import (
 
 // VolrestoreSpec defines the desired state of Volrestore
 type VolrestoreSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// VolumeName is the PVC name whose PV data is to be restored
-	VolumeSnapName string `json:"volume_snap_name,omitempty"`
+	// VolumeName is the volsnap name whose PV data is to be restored
+	VolSnapName string `json:"volume_snap_name,omitempty"`
 }
 
 // VolrestoreStatus defines the observed state of Volrestore
@@ -49,8 +46,7 @@ type Volrestore struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec VolrestoreSpec `json:"spec,omitempty"`
-	// Ask if this is correct
+	Spec   VolrestoreSpec   `json:"spec,omitempty"`
 	Status VolrestoreStatus `json:"status,omitempty"`
 }
 

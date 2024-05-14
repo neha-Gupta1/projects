@@ -40,11 +40,12 @@ spec:
             description: VolrestoreSpec defines the desired state of Volrestore
             properties:
               volume_snap_name:
-                description: VolumeName is the PVC name whose PV data is to be restored
+                description: VolumeName is the volsnap name whose PV data is to be
+                  restored
                 type: string
             type: object
           status:
-            description: Ask if this is correct
+            description: VolrestoreStatus defines the observed state of Volrestore
             properties:
               condition:
                 items:

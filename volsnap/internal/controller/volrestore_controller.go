@@ -64,11 +64,17 @@ func (r *VolrestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	var (
 		volRestore volv1.Volrestore
+		volSnap    volv1.Volsnap
+
+		volRestoreFailed  = "Failed"
+		volRestorePending = "Pending"
+		volRestoreSuccess = "Success"
+		volRestoreBound   = "Bound"
+		snapshotClassName = "csi-hostpath-sc"
 	)
 
 	if err := r.Get(ctx, req.NamespacedName, &volRestore); err != nil {
-		fmt.Println("getting Volrestore", err)
-		log.Log.Info("getting Volrestore not found	")
+		log.Log.Info("getting Volrestore not found")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -77,19 +83,25 @@ func (r *VolrestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	existingVolsnapshot, err := snapClient.VolumeSnapshots(req.NamespacedName.Namespace).Get(ctx, volRestore.Spec.VolumeSnapName, metav1.GetOptions{})
+	volSnapName := types.NamespacedName{Namespace: req.NamespacedName.Namespace, Name: volRestore.Spec.VolSnapName}
+	if err := r.Get(ctx, volSnapName, &volSnap); err != nil {
+		log.Log.Info("failed getting Volsnap")
+		return ctrl.Result{}, err
+	}
+
+	existingVolsnapshot, err := snapClient.VolumeSnapshots(req.NamespacedName.Namespace).Get(ctx, volSnap.Spec.SnapshotName, metav1.GetOptions{})
 	if err != nil && errors.IsNotFound(err) {
 		log.Log.Error(err, "no volume snapshot present")
 		return ctrl.Result{}, err
 	}
 
-	snapshotClassName := "csi-hostpath-sc"
 	snapshotGroup := existingVolsnapshot.GroupVersionKind().Group
 
-	vol := &pvcClient.PersistentVolumeClaim{ // Instantiate a new PersistentVolumeClaim object
+	vol := &pvcClient.PersistentVolumeClaim{
 		TypeMeta: metav1.TypeMeta{Kind: "PersistentVolumeClaim"},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s%s", "restore", volRestore.Spec.VolumeSnapName),
+			// a volsnap can be restored multiple times. But a volrestore will create a pvc only once
+			Name:      fmt.Sprintf("restore-%s", volRestore.Name),
 			Namespace: req.NamespacedName.Namespace,
 		},
 		Spec: pvcClient.PersistentVolumeClaimSpec{
@@ -113,41 +125,50 @@ func (r *VolrestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	if err := r.Create(ctx, vol); err != nil {
 		if errors.IsAlreadyExists(err) {
-			fmt.Println("already exist")
+			log.Log.Info("PVC already exists")
 			err = nil
 		} else {
 			log.Log.Error(err, "failed to create PVC")
-			fmt.Println("failed to create PVC", err)
 
 			return ctrl.Result{}, err
 		}
 	}
 
-	name := types.NamespacedName{Namespace: req.NamespacedName.Namespace, Name: vol.Name}
+	newClaim := types.NamespacedName{Namespace: req.NamespacedName.Namespace, Name: vol.Name}
 
-	if err := r.Get(ctx, name, vol); err != nil {
+	if err := r.Get(ctx, newClaim, vol); err != nil {
 		if errors.IsNotFound(err) {
-			fmt.Println("Was unable to find. Will requeue")
-
+			log.Log.Info("PVC not found. Requesting requeue")
 			return ctrl.Result{Requeue: true}, nil
 		} else {
-			volRestore.Status.Phase = "failed" //pvcClient.PersistentVolumeClaimPhase{}
+			volRestore.Status.Phase = pvcClient.PersistentVolumeClaimPhase(volRestoreFailed)
+			err = r.Status().Update(context.Background(), &volRestore)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
 
 			return ctrl.Result{}, err
 		}
 	}
 
-	volRestore.Status.Phase = vol.Status.Phase
+	if vol.Status.Phase == pvcClient.PersistentVolumeClaimPhase(volRestorePending) {
+		vol.Status.Phase = pvcClient.PersistentVolumeClaimPhase(volRestorePending)
+		err = r.Status().Update(context.Background(), &volRestore)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
 
-	copy(volRestore.Status.Condition, vol.Status.Conditions)
+	if vol.Status.Phase == pvcClient.PersistentVolumeClaimPhase(volRestoreSuccess) ||
+		vol.Status.Phase == pvcClient.PersistentVolumeClaimPhase(volRestoreBound) {
+		volRestore.Status.Phase = vol.Status.Phase
+		copy(volRestore.Status.Condition, vol.Status.Conditions)
+	}
+
 	err = r.Status().Update(context.Background(), &volRestore)
 	if err != nil {
 		return reconcile.Result{}, err
-	}
-
-	// just to update the status
-	if volRestore.Status.Phase == "Pending" {
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	return ctrl.Result{}, nil
