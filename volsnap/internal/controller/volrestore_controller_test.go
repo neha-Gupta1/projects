@@ -33,23 +33,50 @@ import (
 var _ = Describe("Volrestore Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
+		const notpresent = "notpresent"
 
 		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
 		volrestore := &volv1.Volrestore{}
+		volsnap := &volv1.Volsnap{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Volrestore")
-			err := k8sClient.Get(ctx, typeNamespacedName, volrestore)
+
+			// create Volsnap
+			typeSnapshot := types.NamespacedName{
+				Name:      resourceName,
+				Namespace: "default",
+			}
+
+			err := k8sClient.Get(ctx, typeSnapshot, volsnap)
+			if err != nil && errors.IsNotFound(err) {
+				resource := &volv1.Volsnap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      resourceName,
+						Namespace: "default",
+					},
+					Spec: volv1.VolsnapSpec{
+						VolumeName: "csi-pvc",
+					},
+				}
+
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			}
+
+			err = k8sClient.Get(ctx, typeNamespacedName, volrestore)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &volv1.Volrestore{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
+					},
+					Spec: volv1.VolrestoreSpec{
+						VolSnapName: typeSnapshot.Name,
 					},
 					// TODO(user): Specify other spec details if needed.
 				}
@@ -58,14 +85,27 @@ var _ = Describe("Volrestore Controller", func() {
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &volv1.Volrestore{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance Volrestore")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			for _, name := range []string{resourceName, notpresent} {
+				typeNamespacedName := types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+				err := k8sClient.Get(ctx, typeNamespacedName, resource)
+				if err != nil && errors.IsNotFound(err) {
+					err = nil
+					return
+				} else if err != nil {
+					Expect(err).NotTo(HaveOccurred())
+				} else {
+
+					By("Cleanup the specific resource instance Volrestore")
+					Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+				}
+			}
 		})
+
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &VolrestoreReconciler{
@@ -77,8 +117,61 @@ var _ = Describe("Volrestore Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+
+		It("should fail if volSnap not present", func() {
+			By("providing invalid restore name")
+			controllerReconciler := &VolrestoreReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			resource := &volv1.Volrestore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      notpresent,
+					Namespace: "default",
+				},
+				Spec: volv1.VolrestoreSpec{
+					VolSnapName: notpresent,
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).NotTo(HaveOccurred())
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      notpresent,
+					Namespace: "default",
+				},
+			})
+
+			Expect(err).Should(HaveOccurred())
+		})
+
+		It("should fail if namespace not provided", func() {
+			By("request without namespace")
+			controllerReconciler := &VolrestoreReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			resource := &volv1.Volrestore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      notpresent,
+					Namespace: "default",
+				},
+				Spec: volv1.VolrestoreSpec{
+					VolSnapName: notpresent,
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).NotTo(HaveOccurred())
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name: notpresent,
+				},
+			})
+
+			Expect(err).Should(HaveOccurred())
 		})
 	})
 })

@@ -21,7 +21,8 @@ import (
 	"fmt"
 	"net/http"
 
-	snapclientv1 "github.com/kubernetes-csi/external-snapshotter/client/v7/clientset/versioned/typed/volumesnapshot/v1"
+	// snapclientv1 "github.com/kubernetes-csi/external-snapshotter/client/v7/clientset/versioned/typed/volumesnapshot/v1"
+	snapclientv1 "github.com/kubernetes-csi/external-snapshotter/client/v7/apis/volumesnapshot/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -78,18 +79,20 @@ func (r *VolrestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	snapClient, err := r.createSnapshotClient()
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	volSnapName := types.NamespacedName{Namespace: req.NamespacedName.Namespace, Name: volRestore.Spec.VolSnapName}
 	if err := r.Get(ctx, volSnapName, &volSnap); err != nil {
 		log.Log.Info("failed getting Volsnap")
 		return ctrl.Result{}, err
 	}
 
-	existingVolsnapshot, err := snapClient.VolumeSnapshots(req.NamespacedName.Namespace).Get(ctx, volSnap.Spec.SnapshotName, metav1.GetOptions{})
+	var existingVolsnapshot = snapclientv1.VolumeSnapshot{}
+
+	var existingVolSnapshotType = types.NamespacedName{
+		Name:      volSnap.Spec.SnapshotName,
+		Namespace: req.NamespacedName.Namespace,
+	}
+
+	err := r.Get(ctx, existingVolSnapshotType, &existingVolsnapshot)
 	if err != nil && errors.IsNotFound(err) {
 		log.Log.Error(err, "no volume snapshot present")
 		return ctrl.Result{}, err
@@ -124,14 +127,13 @@ func (r *VolrestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if err := r.Create(ctx, vol); err != nil {
-		if errors.IsAlreadyExists(err) {
-			log.Log.Info("PVC already exists")
-			err = nil
-		} else {
+		if !errors.IsAlreadyExists(err) {
 			log.Log.Error(err, "failed to create PVC")
 
 			return ctrl.Result{}, err
 		}
+
+		err = nil
 	}
 
 	newClaim := types.NamespacedName{Namespace: req.NamespacedName.Namespace, Name: vol.Name}
@@ -172,16 +174,6 @@ func (r *VolrestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *VolrestoreReconciler) createSnapshotClient() (client *snapclientv1.SnapshotV1Client, err error) {
-	client, err = snapclientv1.NewForConfigAndClient(r.Config, r.HTTPClient)
-	if err != nil {
-		log.Log.Error(err, "getting volumesnapshot client")
-		return nil, err
-	}
-
-	return client, err
 }
 
 // SetupWithManager sets up the controller with the Manager.

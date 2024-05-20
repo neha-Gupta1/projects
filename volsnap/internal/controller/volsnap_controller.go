@@ -20,12 +20,14 @@ import (
 	"context"
 	"net/http"
 
-	snapclientv1 "github.com/kubernetes-csi/external-snapshotter/client/v7/clientset/versioned/typed/volumesnapshot/v1"
+	// volumesnapv1 "github.com/kubernetes-csi/external-snapshotter/client/v7/apis/volumesnapshot/v1"
+
 	"k8s.io/client-go/rest"
 
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v7/apis/volumesnapshot/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -63,9 +65,13 @@ type VolsnapReconciler struct {
 func (r *VolsnapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
-	var (
-		customVolsnapshot       volv1.Volsnap
+	const (
 		customSnapFinalizerName = "nehagupta1/finalizer"
+	)
+
+	var (
+		customVolsnapshot volv1.Volsnap
+		volumesnapshotv1  snapshotv1.VolumeSnapshot
 	)
 
 	if err := r.Get(ctx, req.NamespacedName, &customVolsnapshot); err != nil {
@@ -91,26 +97,24 @@ func (r *VolsnapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	snapClient, err := r.createSnapshotClient()
-	if err != nil {
-		return ctrl.Result{}, err
+	volumesnapshotv1Name := types.NamespacedName{
+		Namespace: req.NamespacedName.Namespace,
+		Name:      customVolsnapshot.Name,
 	}
 
-	_, err = snapClient.VolumeSnapshots(req.NamespacedName.Namespace).Get(
-		ctx,
-		customVolsnapshot.Name,
-		metav1.GetOptions{})
+	err := r.Get(ctx, volumesnapshotv1Name, &volumesnapshotv1)
 	if err != nil && !errors.IsNotFound(err) {
 		return ctrl.Result{}, err
 	}
 
-	if err != nil {
+	if err != nil && errors.IsNotFound(err) {
 		log.Log.Info("Snapshot not present we will create one!")
 
 		snapshotClassName := "csi-hostpath-snapclass"
 		newSnapshot := snapshotv1.VolumeSnapshot{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: customVolsnapshot.Name,
+				Name:      customVolsnapshot.Name,
+				Namespace: req.NamespacedName.Namespace,
 			},
 			Spec: snapshotv1.VolumeSnapshotSpec{
 				VolumeSnapshotClassName: &snapshotClassName,
@@ -118,8 +122,8 @@ func (r *VolsnapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 					PersistentVolumeClaimName: &customVolsnapshot.Spec.VolumeName,
 				}}}
 
-		volumeSnapshot, err := snapClient.VolumeSnapshots(req.NamespacedName.Namespace).Create(ctx, &newSnapshot, metav1.CreateOptions{})
-		if err != nil && !errors.IsNotFound(err) {
+		err = r.Create(ctx, &newSnapshot)
+		if err != nil {
 			log.Log.Error(err, "creating snapshot")
 			customVolsnapshot.Status = volv1.VolsnapStatus{
 				RunningStatus: "Failed",
@@ -133,8 +137,10 @@ func (r *VolsnapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, err
 		}
 
-		// snapshot not yet created. Lets wait for it to be created
-		if err != nil {
+		// update snapshot info in the volsnap
+		err = r.Get(ctx, volumesnapshotv1Name, &volumesnapshotv1)
+		if err != nil && errors.IsNotFound(err) {
+			// snapshot not yet created. Lets wait for it to be created
 			log.Log.Info("Snapshot not yet created. Requeuing")
 			customVolsnapshot.Status = volv1.VolsnapStatus{
 				RunningStatus: "Pending",
@@ -146,18 +152,18 @@ func (r *VolsnapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 
 			return ctrl.Result{Requeue: true}, nil
+		} else if err != nil {
+			return reconcile.Result{}, err
 		}
 
-		// update snapshot info in the volsnap
-		customVolsnapshot.Spec.VolumeName = *volumeSnapshot.Spec.Source.PersistentVolumeClaimName
-		customVolsnapshot.Spec.SnapshotName = volumeSnapshot.Name
-
-		if err := r.Update(ctx, &customVolsnapshot); err != nil {
-			return ctrl.Result{}, err
-		}
 	}
 
-	//status start
+	customVolsnapshot.Spec.VolumeName = *volumesnapshotv1.Spec.Source.PersistentVolumeClaimName
+	customVolsnapshot.Spec.SnapshotName = volumesnapshotv1.Name
+	if err := r.Update(ctx, &customVolsnapshot); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	customVolsnapshot.Status = volv1.VolsnapStatus{
 		RunningStatus: "Created",
 	}
@@ -167,21 +173,9 @@ func (r *VolsnapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return reconcile.Result{}, err
 	}
 
-	//status end
-
 	log.Log.Info("Every thing ran fine!!!")
 
 	return ctrl.Result{}, nil
-}
-
-func (r *VolsnapReconciler) createSnapshotClient() (client *snapclientv1.SnapshotV1Client, err error) {
-	client, err = snapclientv1.NewForConfigAndClient(r.Config, r.HTTPClient)
-	if err != nil {
-		log.Log.Error(err, "getting volumesnapshot client")
-		return nil, err
-	}
-
-	return client, err
 }
 
 func (r *VolsnapReconciler) handleFinalizer(ctx context.Context, customVolsnapshot volv1.Volsnap, customSnapFinalizerName string) (err error) {
@@ -201,18 +195,13 @@ func (r *VolsnapReconciler) handleFinalizer(ctx context.Context, customVolsnapsh
 }
 
 func (r *VolsnapReconciler) deleteVolumeSnapshot(ctx context.Context, customVolsnapshot volv1.Volsnap) error {
-	snapClient, err := r.createSnapshotClient()
-	if err != nil {
-		return err
-	}
+	volumeSnapshot := snapshotv1.VolumeSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      customVolsnapshot.Spec.SnapshotName,
+			Namespace: customVolsnapshot.Namespace,
+		}}
 
-	volumesnapshot, err := snapClient.VolumeSnapshots(customVolsnapshot.Namespace).Get(ctx, customVolsnapshot.Name, metav1.GetOptions{})
-	if err != nil {
-		log.Log.Error(err, "getting snapshot")
-		return err
-	}
-
-	err = snapClient.VolumeSnapshots(customVolsnapshot.Namespace).Delete(ctx, volumesnapshot.Name, metav1.DeleteOptions{})
+	err := r.Delete(ctx, &volumeSnapshot, &client.DeleteOptions{})
 	if err != nil {
 		log.Log.Error(err, "deleting snapshot")
 		return err

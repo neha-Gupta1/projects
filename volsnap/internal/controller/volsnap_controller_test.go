@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -32,7 +34,7 @@ import (
 
 var _ = Describe("Volsnap Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const resourceName = "test-resource-1"
 
 		ctx := context.Background()
 
@@ -44,6 +46,8 @@ var _ = Describe("Volsnap Controller", func() {
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Volsnap")
+
+			// create Volsnap
 			err := k8sClient.Get(ctx, typeNamespacedName, volsnap)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &volv1.Volsnap{
@@ -51,51 +55,106 @@ var _ = Describe("Volsnap Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: volv1.VolsnapSpec{
+						VolumeName: "csi-pvc",
+					},
 				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				err := k8sClient.Create(ctx, resource)
+				Expect(err).To(Succeed())
 			}
 		})
 
-		// k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
-		// 	Scheme: scheme.Scheme,
-		// })
-		// Expect(err).ToNot(HaveOccurred())
-
-		// err = (&VolsnapReconciler{
-		// 	Client: k8sManager.GetClient(),
-		// 	Scheme: k8sManager.GetScheme(),
-		// }).SetupWithManager(k8sManager)
-		// Expect(err).ToNot(HaveOccurred())
-
-		// go func() {
-		// 	defer GinkgoRecover()
-		// 	err = k8sManager.Start(ctx)
-		// 	Expect(err).ToNot(HaveOccurred(), "failed to run manager")
-		// }()
-
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &volv1.Volsnap{}
+			resource := &volv1.Volsnap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+			}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+			if err != nil && errors.IsNotFound(err) {
+				fmt.Println("Test successfully completed")
+				err = nil
+				return
+			} else if err != nil {
+				Expect(err).NotTo(HaveOccurred())
+			} else {
 
-			By("Cleanup the specific resource instance Volsnap")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+				By("Cleanup the specific resource instance Volsnap")
+				Eventually(k8sClient.Delete(ctx, resource)).Should(Succeed())
+			}
 		})
+
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
+
+			controllerReconciler := &VolsnapReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, volsnap)).NotTo(HaveOccurred())
+			SetDefaultEventuallyTimeout(time.Minute * 1)
+			Eventually(volsnap.Status.RunningStatus).Should(Equal("Created"))
+		},
+		)
+
+		It("should successfully reconcile the deleted resource", func() {
+			By("Reconciling the deleted resource")
+
+			resource := &volv1.Volsnap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+			}
+
 			controllerReconciler := &VolsnapReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
 
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+
+		It("should fail if namespace not provided", func() {
+			By("request without namespace")
+			controllerReconciler := &VolsnapReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			resource := &volv1.Volsnap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "nonamespace",
+					Namespace: "default",
+				},
+			}
+
+			err := k8sClient.Create(ctx, resource)
+			if err != nil && errors.IsAlreadyExists(err) {
+				err = nil
+			}
+			if err != nil {
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name: resourceName,
+				},
+			})
+
+			Expect(err).Should(HaveOccurred())
 		})
 	})
 })
